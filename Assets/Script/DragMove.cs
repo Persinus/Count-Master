@@ -1,45 +1,29 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class DragMove : MonoBehaviour
 {
-    private Rigidbody rb;
+    public float moveSpeed = 10f;
+    public float dragSensitivity = 0.01f;
 
-    public float moveSpeed = 10f;             // tốc độ tiến thẳng
-    public float dragSensitivity = 0.05f;     // độ nhạy kéo ngang
+    public float minX = 2f;
+    public float maxX = 7f;
 
     private Vector2 lastTouchPosition;
     private bool isDragging = false;
+    private bool hasStarted = false; // 👈 mới thêm
 
-    [SerializeField] GameObject target;
+    private Rigidbody rb;
+    private float targetX;
 
-    void Start()
+    private void Start()
     {
-        rb = target.GetComponent<Rigidbody>();
+        rb = GetComponent<Rigidbody>();
+        rb.isKinematic = true;
+        targetX = transform.position.x;
     }
 
-    private void FixedUpdate()
-    {
-        Vector3 velocity = rb.linearVelocity;
-
-        // Luôn chạy thẳng theo Z
-        velocity.z = moveSpeed;
-
-        if (isDragging)
-        {
-            float moveX = (Input.GetTouch(0).position.x - lastTouchPosition.x) * dragSensitivity;
-
-            velocity.x = moveX;
-            lastTouchPosition = Input.GetTouch(0).position;
-        }
-        else
-        {
-            velocity.x = 0;
-        }
-
-        rb.linearVelocity = velocity;
-    }
-
-    void Update()
+    private void Update()
     {
         if (Input.touchCount > 0)
         {
@@ -49,11 +33,28 @@ public class DragMove : MonoBehaviour
             {
                 isDragging = true;
                 lastTouchPosition = touch.position;
+                hasStarted = true; // 👈 đánh dấu bắt đầu
+            }
+            else if (touch.phase == TouchPhase.Moved && isDragging)
+            {
+                float deltaX = (touch.position.x - lastTouchPosition.x) * dragSensitivity;
+                targetX += deltaX;
+                targetX = Mathf.Clamp(targetX, minX, maxX);
+                lastTouchPosition = touch.position;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
                 isDragging = false;
             }
         }
+    }
+
+    private void FixedUpdate()
+    {
+        if (!hasStarted) return; // 👈 Chưa bắt đầu thì không di chuyển
+
+        Vector3 currentPos = rb.position;
+        Vector3 targetPos = new Vector3(targetX, currentPos.y, currentPos.z + moveSpeed * Time.fixedDeltaTime);
+        rb.MovePosition(targetPos);
     }
 }
