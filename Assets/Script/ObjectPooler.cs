@@ -3,10 +3,25 @@ using System.Collections.Generic;
 
 public class ObjectPooler : MonoBehaviour
 {
+    public static ObjectPooler Instance { get; private set; }
+
     public GameObject prefab;
     public int poolSize = 100;
 
     private Queue<GameObject> pool = new Queue<GameObject>();
+
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
 
     void Start()
     {
