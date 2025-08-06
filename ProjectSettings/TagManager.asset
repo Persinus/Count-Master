@@ -3,7 +3,11 @@
 --- !u!78 &1
 TagManager:
   serializedVersion: 3
-  tags: []
+  tags:
+  - GroupPlayer
+  - Clone_Player
+  - Ground
+  - Trap
   layers:
   - Default
   - TransparentFX
@@ -11,8 +15,8 @@ TagManager:
   - Player
   - Water
   - UI
-  - 
-  - 
+  - Ground
+  - Clone_Player
   - 
   - 
   - 
