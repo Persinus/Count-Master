@@ -7,17 +7,19 @@ public class CloneTriggerHandler : MonoBehaviour
         if (other.CompareTag("Trap"))
         {
             // Gọi lại object pool để return về
-            ObjectPooler.Instance.ReturnToPool(gameObject);
-            // Thông báo cho CloneGroup cập nhật số lượng
-            CloneGroup cloneGroup = GetComponentInParent<CloneGroup>();
-            if (cloneGroup != null)
+            Singleton<ObjectPool>.Instance.ReturnObject(gameObject);
+            // Thông báo cho BubbleNumberClone cập nhật số lượng
+            BubbleNumberClone bubbleNumberClone = GetComponentInParent<BubbleNumberClone>();
+            if (bubbleNumberClone != null)
             {
-                cloneGroup.UpdateCount();
+                bubbleNumberClone.UpdateCount();
             }
             else
-            {
-                Debug.LogWarning("CloneGroup không được tìm thấy trong parent của clone.");
-            }
+                Debug.LogWarning("BubbleNumberClone không được tìm thấy trong parent của clone.");
+        }
+        else if (other.CompareTag("Finish"))
+        {
+            LevelManager.Instance.EndGame();
         }
     }
 }

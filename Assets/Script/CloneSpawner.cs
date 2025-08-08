@@ -2,11 +2,12 @@ using UnityEngine;
 using System.Collections.Generic;
 using DG.Tweening;
 
-public class PrettyCloneSpawner : MonoBehaviour
+public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
 {
     [Header("References")]
-    public Transform spawnOrigin;        // Vị trí dùng làm gốc tính toán (có thể null nếu không cần)
-    public Transform cloneParent;        // Transform chứa các clone (gán trong scene)
+    public Transform spawnOrigin;
+    public Transform cloneParent;
+    
 
     [Header("Spawn Settings")]
     public int numberOfClones = 30;
@@ -23,16 +24,10 @@ public class PrettyCloneSpawner : MonoBehaviour
     public float yFallThreshold = -10f;
     public LayerMask groundLayer;
 
-    private List<Transform> clones = new List<Transform>();
-    private CloneGroup cloneGroup;
+    public List<Transform> clones = new List<Transform>();
+    private BubbleNumberClone cloneGroup;
 
-    Color targetColor = Color.red; // 🎯 Màu muốn đổi sang (bạn có thể sửa thành màu khác)
-
-
-    void Start()
-    {
-        SpawnClones();
-    }
+    public Color targetColor = Color.red;
 
     void Update()
     {
@@ -51,7 +46,7 @@ public class PrettyCloneSpawner : MonoBehaviour
         }
     }
 
-    void SpawnClones()
+    public void SpawnClones()
     {
         clones.Clear();
 
@@ -61,14 +56,12 @@ public class PrettyCloneSpawner : MonoBehaviour
             return;
         }
 
-        // Set vị trí ban đầu (nếu cần thiết)
         if (spawnOrigin != null)
             cloneParent.position = spawnOrigin.position;
 
-        // Lấy hoặc thêm CloneGroup
-        cloneGroup = cloneParent.GetComponent<CloneGroup>();
+        cloneGroup = cloneParent.GetComponent<BubbleNumberClone>();
         if (cloneGroup == null)
-            cloneGroup = cloneParent.gameObject.AddComponent<CloneGroup>();
+            cloneGroup = cloneParent.gameObject.AddComponent<BubbleNumberClone>();
 
         for (int i = 0; i < numberOfClones; i++)
         {
@@ -77,9 +70,9 @@ public class PrettyCloneSpawner : MonoBehaviour
 
             float x = Mathf.Cos(angle) * radius;
             float z = Mathf.Sin(angle) * radius + startZ;
-            Vector3 targetLocalPos = new Vector3(x, 0f, z); // Vị trí cục bộ trong cha
+            Vector3 targetLocalPos = new Vector3(x, 0f, z);
 
-            GameObject clone = ObjectPooler.Instance.GetFromPool();
+            GameObject clone = Singleton<ObjectPool>.Instance.GetObject();
             clone.transform.SetParent(cloneParent);
             clone.transform.localPosition = Vector3.zero;
             clone.transform.localRotation = Quaternion.identity;
@@ -88,37 +81,22 @@ public class PrettyCloneSpawner : MonoBehaviour
             clone.tag = "Clone_Player";
             clone.layer = LayerMask.NameToLayer("Clone_Player");
 
-            // Tìm SkinnedMeshRenderer trong clone
-            SkinnedMeshRenderer renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (renderer != null)
-            {
-            // Tạo material riêng để không ảnh hưởng các clone khác
-           renderer.material = new Material(renderer.material);
-
-            // Đổi màu clone – dùng "_BaseColor" cho URP, "_Color" cho Built-in
-            renderer.material.SetColor("_BaseColor", Color.red); // dùng URP
-            // renderer.material.SetColor("_Color", Color.green);   // nếu dùng Built-in
-}
-else
-{
-    Debug.LogWarning($"Không tìm thấy SkinnedMeshRenderer trong {clone.name}");
-}
-
             if (clone.TryGetComponent<Rigidbody>(out var rb))
             {
                 rb.isKinematic = true;
                 rb.useGravity = false;
             }
 
-            clone.transform.DOScale(Vector3.one, scaleUpDuration).SetEase(Ease.OutBack);
+            clone.transform.DOScale(new Vector3(0.7f, 0.7f, 0.7f), scaleUpDuration).SetEase(Ease.OutBack);
             clone.transform.DOLocalMove(targetLocalPos, moveDuration)
                 .SetEase(Ease.OutBack)
                 .SetDelay(i * 0.02f);
 
             clones.Add(clone.transform);
+            ChangeColor(targetColor);
+            ChangeAnimationState(CloneAnimState.Idle);
         }
 
-      
         cloneGroup.UpdateCount();
     }
 
@@ -128,7 +106,8 @@ else
         return Physics.Raycast(origin, Vector3.down, fallRayDistance, groundLayer);
     }
 
-    void DetachClone(Transform clone)
+    // Khi clone bị rơi (vật lý)
+    void DetachClone(Transform clone, bool isFalling = true)
     {
         clone.SetParent(null);
 
@@ -137,7 +116,171 @@ else
 
         rb.isKinematic = false;
         rb.useGravity = true;
-        Destroy(clone.gameObject, 0.5f);
 
+        if (isFalling)
+        {
+            // Hiệu ứng rơi rồi destroy
+            Destroy(clone.gameObject, 0.5f);
+        }
+        else
+        {
+            // Trả về pool ngay (không hiệu ứng rơi)
+            Singleton<ObjectPool>.Instance.ReturnObject(clone.gameObject);
+        }
     }
+
+    private System.Collections.IEnumerator ReturnToPoolAfterDelay(GameObject obj, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        Singleton<ObjectPool>.Instance.ReturnObject(obj);
+    }
+
+    public void ChangeColor(Color newColor)
+    {
+        targetColor = newColor;
+
+        foreach (Transform clone in clones)
+        {
+            SkinnedMeshRenderer renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.material.SetColor("_BaseColor", targetColor);
+            }
+            else
+            {
+                Debug.LogWarning($"Clone {clone.name} không có SkinnedMeshRenderer để đổi màu.");
+            }
+        }
+    }
+
+    public void ChangeAnimationState(CloneAnimState state)
+    {
+        foreach (Transform clone in clones)
+        {
+            if (clone == null) continue;
+
+            CloneAnimatorController anim = clone.GetComponent<CloneAnimatorController>();
+            if (anim == null) continue;
+
+            switch (state)
+            {
+                case CloneAnimState.Idle:
+                    anim.PlayIdle();
+                    break;
+                case CloneAnimState.Running:
+                    anim.PlayRunning();
+                    break;
+            }
+        }
+    }
+
+    // Hàm tạo một clone mới tại vị trí localPos (hoặc Vector3.zero nếu không truyền)
+    private Transform CreateClone(Vector3? localPos = null, Color? color = null)
+    {
+        GameObject clone = Singleton<ObjectPool>.Instance.GetObject();
+        clone.transform.SetParent(cloneParent);
+        clone.transform.localPosition = localPos ?? Vector3.zero;
+        clone.transform.localRotation = Quaternion.identity;
+        clone.transform.localScale = new Vector3(0.7f, 0.7f, 0.7f);
+
+        clone.tag = "Clone_Player";
+        clone.layer = LayerMask.NameToLayer("Clone_Player");
+
+        if (clone.TryGetComponent<Rigidbody>(out var rb))
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
+
+        // Đổi màu cho clone mới
+        Color useColor = color ?? targetColor;
+        SkinnedMeshRenderer renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (renderer != null)
+        {
+            renderer.material.SetColor("_BaseColor", useColor);
+        }
+
+        ChangeAnimationState(CloneAnimState.Idle);
+
+        return clone.transform;
+    }
+
+    // Sắp xếp lại vị trí các clone theo đội hình tròn/quạt
+    private void RearrangeClones()
+    {
+        for (int i = 0; i < clones.Count; i++)
+        {
+            float radius = spacing * Mathf.Sqrt(i);
+            float angle = i * angleFactor;
+
+            float x = Mathf.Cos(angle) * radius;
+            float z = Mathf.Sin(angle) * radius + startZ;
+            Vector3 targetLocalPos = new Vector3(x, 0f, z);
+
+            clones[i].localPosition = targetLocalPos;
+        }
+    }
+
+    // Tăng số lượng clone lên amount
+    public void AddClones(int amount)
+    {
+        Color baseColor = clones.Count > 0
+            ? clones[0].GetComponentInChildren<SkinnedMeshRenderer>()?.material.GetColor("_BaseColor") ?? targetColor
+            : targetColor;
+
+        for (int i = 0; i < amount; i++)
+        {
+            clones.Add(CreateClone(null, baseColor));
+        }
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
+    }
+
+    // Giảm số lượng clone đi amount
+    public void RemoveClones(int amount)
+    {
+        for (int i = 0; i < amount && clones.Count > 0; i++)
+        {
+            Transform clone = clones[clones.Count - 1];
+            clones.RemoveAt(clones.Count - 1);
+            DetachClone(clone);
+        }
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
+    }
+
+    // Nhân số lượng clone lên factor
+    public void MultiplyClones(int factor)
+    {
+        if (factor <= 1 || clones.Count == 0) return;
+
+        int originalCount = clones.Count;
+        List<Vector3> originalPositions = new List<Vector3>();
+        foreach (var clone in clones)
+            originalPositions.Add(clone.localPosition);
+
+        Color baseColor = clones[0].GetComponentInChildren<SkinnedMeshRenderer>()?.material.GetColor("_BaseColor") ?? targetColor;
+
+        for (int i = 1; i < factor; i++)
+        {
+            for (int j = 0; j < originalCount; j++)
+            {
+                clones.Add(CreateClone(originalPositions[j], baseColor));
+            }
+        }
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
+    }
+
+    // Chia số lượng clone cho divisor (làm tròn xuống)
+    public void DivideClones(int divisor)
+    {
+        if (divisor <= 1) return;
+        int targetCount = clones.Count / divisor;
+        int removeCount = clones.Count - targetCount;
+        RemoveClones(removeCount);
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
+    }
+
 }
