@@ -1,10 +1,7 @@
 using UnityEngine;
-using System.Collections.Generic;
-
 public class Singleton<T> : MonoBehaviour where T : MonoBehaviour
 {
     private static T instance;
-
     public static T Instance
     {
         get
@@ -14,8 +11,9 @@ public class Singleton<T> : MonoBehaviour where T : MonoBehaviour
                 instance = FindObjectOfType<T>();
                 if (instance == null)
                 {
-                    GameObject singletonObject = new GameObject(typeof(T).Name);
-                    instance = singletonObject.AddComponent<T>();
+                    GameObject obj = new GameObject(typeof(T).Name);
+                    instance = obj.AddComponent<T>();
+                    DontDestroyOnLoad(obj);
                 }
             }
             return instance;
@@ -27,11 +25,11 @@ public class Singleton<T> : MonoBehaviour where T : MonoBehaviour
         if (instance == null)
         {
             instance = this as T;
+            DontDestroyOnLoad(gameObject);
         }
-        else
+        else if (instance != this)
         {
             Destroy(gameObject);
         }
     }
-    
 }
