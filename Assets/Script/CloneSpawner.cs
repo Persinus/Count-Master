@@ -2,44 +2,54 @@ using UnityEngine;
 using System.Collections.Generic;
 using DG.Tweening;
 
+
+
 public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
 {
     [Header("References")]
-    public Transform spawnOrigin;
-    public Transform cloneParent;
-    
+    [SerializeField] private Transform spawnOrigin;
+    [SerializeField] private Transform cloneParent;
 
     [Header("Spawn Settings")]
     public int numberOfClones = 30;
     public float spacing = 0.4f;
     public float startZ = -15f;
     public float angleFactor = 0.5f;
+    public Vector3 cloneScale = new Vector3(0.7f, 0.7f, 0.7f);
+    public float spawnDelayStep = 0.02f;
 
     [Header("Effect Settings")]
     public float scaleUpDuration = 0.4f;
     public float moveDuration = 0.5f;
 
     [Header("Fall Settings")]
-    public float fallRayDistance = 0.3f;
+    public float fallRayDistance = 0.4f;
     public float yFallThreshold = -10f;
     public LayerMask groundLayer;
 
-    public List<Transform> clones = new List<Transform>();
-    private BubbleNumberClone cloneGroup;
-
+    [Header("Visuals")]
     public Color targetColor = Color.red;
 
-    void Update()
+    public List<CloneData> clones = new List<CloneData>();
+    private BubbleNumberClone cloneGroup;
+
+    private void Awake()
+    {
+        if (cloneParent != null)
+            cloneGroup = cloneParent.GetComponent<BubbleNumberClone>() ?? cloneParent.gameObject.AddComponent<BubbleNumberClone>();
+    }
+
+    private void Update()
     {
         for (int i = clones.Count - 1; i >= 0; i--)
         {
-            Transform clone = clones[i];
-            if (clone == null) continue;
+            var clone = clones[i];
+            if (clone == null || clone.transform == null) continue;
 
-            bool isFalling = !IsOnGround(clone) || clone.position.y < yFallThreshold;
+            bool isFalling = !IsOnGround(clone.transform) || clone.transform.position.y < yFallThreshold;
             if (isFalling)
             {
-                DetachClone(clone);
+                DetachClone(clone.transform);
                 clones.RemoveAt(i);
                 cloneGroup?.UpdateCount();
             }
@@ -48,7 +58,7 @@ public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
 
     public void SpawnClones()
     {
-        clones.Clear();
+        ClearClones();
 
         if (cloneParent == null)
         {
@@ -59,10 +69,6 @@ public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
         if (spawnOrigin != null)
             cloneParent.position = spawnOrigin.position;
 
-        cloneGroup = cloneParent.GetComponent<BubbleNumberClone>();
-        if (cloneGroup == null)
-            cloneGroup = cloneParent.gameObject.AddComponent<BubbleNumberClone>();
-
         for (int i = 0; i < numberOfClones; i++)
         {
             float radius = spacing * Mathf.Sqrt(i);
@@ -72,42 +78,60 @@ public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
             float z = Mathf.Sin(angle) * radius + startZ;
             Vector3 targetLocalPos = new Vector3(x, 0f, z);
 
-            GameObject clone = Singleton<ObjectPool>.Instance.GetObject();
-            clone.transform.SetParent(cloneParent);
-            clone.transform.localPosition = Vector3.zero;
-            clone.transform.localRotation = Quaternion.identity;
-            clone.transform.localScale = Vector3.zero;
+            var cloneData = InitClone(cloneParent, Vector3.zero, targetColor);
+            clones.Add(cloneData);
 
-            clone.tag = "Clone_Player";
-            clone.layer = LayerMask.NameToLayer("Clone_Player");
-
-            if (clone.TryGetComponent<Rigidbody>(out var rb))
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
-
-            clone.transform.DOScale(new Vector3(0.7f, 0.7f, 0.7f), scaleUpDuration).SetEase(Ease.OutBack);
-            clone.transform.DOLocalMove(targetLocalPos, moveDuration)
+            cloneData.transform.localScale = Vector3.zero;
+            cloneData.transform.DOScale(cloneScale, scaleUpDuration).SetEase(Ease.OutBack);
+            cloneData.transform.DOLocalMove(targetLocalPos, moveDuration)
                 .SetEase(Ease.OutBack)
-                .SetDelay(i * 0.02f);
-
-            clones.Add(clone.transform);
-            ChangeColor(targetColor);
-            ChangeAnimationState(CloneAnimState.Idle);
+                .SetDelay(i * spawnDelayStep);
         }
 
-        cloneGroup.UpdateCount();
+        cloneGroup?.UpdateCount();
     }
 
-    bool IsOnGround(Transform clone)
+    private CloneData InitClone(Transform parent, Vector3 localPos, Color color)
     {
-        Vector3 origin = clone.position + Vector3.up * 0.1f;
+        GameObject clone = Singleton<ObjectPool>.Instance.GetObject();
+        clone.transform.SetParent(parent);
+        clone.transform.localPosition = localPos;
+        clone.transform.localRotation = Quaternion.identity;
+        clone.transform.localScale = cloneScale;
+
+        clone.tag = "Clone_Player";
+        clone.layer = LayerMask.NameToLayer("Clone_Player");
+
+        if (clone.TryGetComponent<Rigidbody>(out var rb))
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
+
+        var renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (renderer != null)
+            renderer.material.SetColor("_BaseColor", color);
+
+        var animator = clone.GetComponent<CloneAnimatorController>();
+        if (animator != null)
+            animator.PlayIdle();
+
+        return new CloneData
+        {
+            transform = clone.transform,
+            renderer = renderer,
+            animator = animator
+        };
+       
+    }
+
+    private bool IsOnGround(Transform clone)
+    {
+        Vector3 origin = clone.position + Vector3.up * 0.2f;
         return Physics.Raycast(origin, Vector3.down, fallRayDistance, groundLayer);
     }
 
-    // Khi clone bị rơi (vật lý)
-    void DetachClone(Transform clone, bool isFalling = true)
+    private void DetachClone(Transform clone, bool isFalling = true)
     {
         clone.SetParent(null);
 
@@ -118,15 +142,9 @@ public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
         rb.useGravity = true;
 
         if (isFalling)
-        {
-            // Hiệu ứng rơi rồi destroy
-            Destroy(clone.gameObject, 0.5f);
-        }
+            StartCoroutine(ReturnToPoolAfterDelay(clone.gameObject, 0.5f));
         else
-        {
-            // Trả về pool ngay (không hiệu ứng rơi)
             Singleton<ObjectPool>.Instance.ReturnObject(clone.gameObject);
-        }
     }
 
     private System.Collections.IEnumerator ReturnToPoolAfterDelay(GameObject obj, float delay)
@@ -138,74 +156,105 @@ public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
     public void ChangeColor(Color newColor)
     {
         targetColor = newColor;
-
-        foreach (Transform clone in clones)
-        {
-            SkinnedMeshRenderer renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (renderer != null)
-            {
-                renderer.material.SetColor("_BaseColor", targetColor);
-            }
-            else
-            {
-                Debug.LogWarning($"Clone {clone.name} không có SkinnedMeshRenderer để đổi màu.");
-            }
-        }
+        foreach (var clone in clones)
+            if (clone.renderer != null)
+                clone.renderer.material.SetColor("_BaseColor", targetColor);
     }
 
     public void ChangeAnimationState(CloneAnimState state)
+{
+    if (clones.Count == 0) return;
+
+    float normalizedTime = 0f;
+
+    // Lấy normalizedTime từ clone đầu tiên nếu có animator
+    var firstAnimData = clones[0].animator;
+    if (firstAnimData != null)
     {
-        foreach (Transform clone in clones)
+        Animator animator = firstAnimData.GetComponent<Animator>();
+        if (animator != null)
         {
-            if (clone == null) continue;
-
-            CloneAnimatorController anim = clone.GetComponent<CloneAnimatorController>();
-            if (anim == null) continue;
-
-            switch (state)
-            {
-                case CloneAnimState.Idle:
-                    anim.PlayIdle();
-                    break;
-                case CloneAnimState.Running:
-                    anim.PlayRunning();
-                    break;
-            }
+            var stateInfo = animator.GetCurrentAnimatorStateInfo(0);
+            normalizedTime = stateInfo.normalizedTime % 1f;
         }
     }
 
-    // Hàm tạo một clone mới tại vị trí localPos (hoặc Vector3.zero nếu không truyền)
-    private Transform CreateClone(Vector3? localPos = null, Color? color = null)
+    foreach (var clone in clones)
     {
-        GameObject clone = Singleton<ObjectPool>.Instance.GetObject();
-        clone.transform.SetParent(cloneParent);
-        clone.transform.localPosition = localPos ?? Vector3.zero;
-        clone.transform.localRotation = Quaternion.identity;
-        clone.transform.localScale = new Vector3(0.7f, 0.7f, 0.7f);
+        if (clone.animator == null) continue;
 
-        clone.tag = "Clone_Player";
-        clone.layer = LayerMask.NameToLayer("Clone_Player");
-
-        if (clone.TryGetComponent<Rigidbody>(out var rb))
+        switch (state)
         {
-            rb.isKinematic = true;
-            rb.useGravity = false;
+            case CloneAnimState.Idle:
+                clone.animator.PlayIdle();
+                break;
+            case CloneAnimState.Running:
+                clone.animator.PlayRunning(normalizedTime);
+                break;
+            case CloneAnimState.Dancing:
+                clone.animator.PlayDancing();
+                break;
         }
+    }
+}
 
-        // Đổi màu cho clone mới
-        Color useColor = color ?? targetColor;
-        SkinnedMeshRenderer renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>();
-        if (renderer != null)
-        {
-            renderer.material.SetColor("_BaseColor", useColor);
-        }
 
-        ChangeAnimationState(CloneAnimState.Idle);
+    public void AddClones(int amount)
+    {
+        Color baseColor = clones.Count > 0 && clones[0].renderer != null
+            ? clones[0].renderer.material.GetColor("_BaseColor")
+            : targetColor;
 
-        return clone.transform;
+        for (int i = 0; i < amount; i++)
+            clones.Add(InitClone(cloneParent, Vector3.zero, baseColor));
+
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
     }
 
-    // Sắp xếp lại vị trí các clone theo đội hình tròn/quạt
+    public void RemoveClones(int amount)
+    {
+        for (int i = 0; i < amount && clones.Count > 0; i++)
+        {
+            var clone = clones[^1];
+            clones.RemoveAt(clones.Count - 1);
+            DetachClone(clone.transform);
+        }
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
+    }
+
+    public void MultiplyClones(int factor)
+    {
+        if (factor <= 1 || clones.Count == 0) return;
+
+        int originalCount = clones.Count;
+        List<Vector3> originalPositions = new List<Vector3>();
+        foreach (var c in clones)
+            originalPositions.Add(c.transform.localPosition);
+
+        Color baseColor = clones[0].renderer != null
+            ? clones[0].renderer.material.GetColor("_BaseColor")
+            : targetColor;
+
+        for (int i = 1; i < factor; i++)
+            for (int j = 0; j < originalCount; j++)
+                clones.Add(InitClone(cloneParent, originalPositions[j], baseColor));
+
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
+    }
+
+    public void DivideClones(int divisor)
+    {
+        if (divisor <= 1) return;
+        int targetCount = clones.Count / divisor;
+        int removeCount = clones.Count - targetCount;
+        RemoveClones(removeCount);
+        RearrangeClones();
+        cloneGroup?.UpdateCount();
+    }
+
     private void RearrangeClones()
     {
         for (int i = 0; i < clones.Count; i++)
@@ -217,70 +266,26 @@ public class PrettyCloneSpawner : Singleton<PrettyCloneSpawner>
             float z = Mathf.Sin(angle) * radius + startZ;
             Vector3 targetLocalPos = new Vector3(x, 0f, z);
 
-            clones[i].localPosition = targetLocalPos;
+            clones[i].transform.DOLocalMove(targetLocalPos, 0.3f).SetEase(Ease.OutQuad);
         }
     }
 
-    // Tăng số lượng clone lên amount
-    public void AddClones(int amount)
+    private void ClearClones()
     {
-        Color baseColor = clones.Count > 0
-            ? clones[0].GetComponentInChildren<SkinnedMeshRenderer>()?.material.GetColor("_BaseColor") ?? targetColor
-            : targetColor;
-
-        for (int i = 0; i < amount; i++)
-        {
-            clones.Add(CreateClone(null, baseColor));
-        }
-        RearrangeClones();
-        cloneGroup?.UpdateCount();
-    }
-
-    // Giảm số lượng clone đi amount
-    public void RemoveClones(int amount)
-    {
-        for (int i = 0; i < amount && clones.Count > 0; i++)
-        {
-            Transform clone = clones[clones.Count - 1];
-            clones.RemoveAt(clones.Count - 1);
-            DetachClone(clone);
-        }
-        RearrangeClones();
-        cloneGroup?.UpdateCount();
-    }
-
-    // Nhân số lượng clone lên factor
-    public void MultiplyClones(int factor)
-    {
-        if (factor <= 1 || clones.Count == 0) return;
-
-        int originalCount = clones.Count;
-        List<Vector3> originalPositions = new List<Vector3>();
         foreach (var clone in clones)
-            originalPositions.Add(clone.localPosition);
-
-        Color baseColor = clones[0].GetComponentInChildren<SkinnedMeshRenderer>()?.material.GetColor("_BaseColor") ?? targetColor;
-
-        for (int i = 1; i < factor; i++)
-        {
-            for (int j = 0; j < originalCount; j++)
-            {
-                clones.Add(CreateClone(originalPositions[j], baseColor));
-            }
-        }
-        RearrangeClones();
-        cloneGroup?.UpdateCount();
+            if (clone != null && clone.transform != null)
+                Singleton<ObjectPool>.Instance.ReturnObject(clone.transform.gameObject);
+        clones.Clear();
     }
+     
 
-    // Chia số lượng clone cho divisor (làm tròn xuống)
-    public void DivideClones(int divisor)
-    {
-        if (divisor <= 1) return;
-        int targetCount = clones.Count / divisor;
-        int removeCount = clones.Count - targetCount;
-        RemoveClones(removeCount);
-        RearrangeClones();
-        cloneGroup?.UpdateCount();
-    }
 
+
+    [System.Serializable]
+public class CloneData
+{
+    public Transform transform;
+    public SkinnedMeshRenderer renderer;
+    public CloneAnimatorController animator;
+}
 }
