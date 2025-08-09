@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
+using System.Collections.Generic;
 
 [RequireComponent(typeof(Rigidbody))]
 public class GroupPlayerMovement : MonoBehaviour
@@ -11,7 +13,7 @@ public class GroupPlayerMovement : MonoBehaviour
 
     private Vector2 lastTouchPosition;
     private bool isDragging = false;
-    private bool hasStarted = false; // 👈 mới thêm
+    private bool hasStarted = false;
 
     private Rigidbody rb;
     private float targetX;
@@ -31,12 +33,14 @@ public class GroupPlayerMovement : MonoBehaviour
 
             if (touch.phase == TouchPhase.Began)
             {
+                // ⛔ Nếu bấm vào UI -> không bắt đầu
+                if (IsPointerOverUI(touch.position))
+                    return;
+
                 isDragging = true;
                 lastTouchPosition = touch.position;
-                hasStarted = true; // 👈 đánh dấu bắt đầu
-                LevelManager.Instance.StartGame(); // 👈 Gọi chạy animation Running
-
-                
+                hasStarted = true;
+                LevelManager.Instance.StartGame();
             }
             else if (touch.phase == TouchPhase.Moved && isDragging)
             {
@@ -54,7 +58,7 @@ public class GroupPlayerMovement : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (!hasStarted) return; // 👈 Chưa bắt đầu thì không di chuyển
+        if (!hasStarted) return;
 
         Vector3 currentPos = rb.position;
         Vector3 targetPos = new Vector3(targetX, currentPos.y, currentPos.z + moveSpeed * Time.fixedDeltaTime);
@@ -65,5 +69,18 @@ public class GroupPlayerMovement : MonoBehaviour
     {
         hasStarted = false;
         isDragging = false;
+    }
+
+    // ✅ Check bấm UI
+    bool IsPointerOverUI(Vector2 pos)
+    {
+        PointerEventData eventData = new PointerEventData(EventSystem.current)
+        {
+            position = pos
+        };
+
+        List<RaycastResult> results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(eventData, results);
+        return results.Count > 0;
     }
 }
