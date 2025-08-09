@@ -21,11 +21,16 @@ public class CloneAnimatorController : MonoBehaviour
             Debug.LogWarning($"{name} ❌ không tìm thấy Animator.");
     }
 
-    public void PlayRunning()
+    public void PlayRunning(float normalizedTime = 0f)
+{
+    if (animator != null)
     {
-        if (animator != null)
-            animator.CrossFade("Running", 0.2f);
+        // CrossFade để chuyển mượt, sau đó set normalizedTime
+        animator.CrossFade("Running", 0.2f);
+        animator.Play("Running", 0, normalizedTime);
     }
+}
+
 
     public void PlayIdle()
     {
