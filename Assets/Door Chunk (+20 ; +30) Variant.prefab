@@ -1527,6 +1527,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fb5f440ae0cc2304eb39e2fe97bc587c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GateTrigger
+  gateGroupID: 1
   gateSide: 1
   operation: 2
   operationValue: 2
@@ -1547,6 +1548,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fb5f440ae0cc2304eb39e2fe97bc587c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GateTrigger
+  gateGroupID: 1
   gateSide: 1
   operation: 2
   operationValue: 4
