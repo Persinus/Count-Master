@@ -74,9 +74,8 @@ public class LevelManager : Singleton<LevelManager>
         //
         foreach (var clone in prettyCloneSpawner.clones)
         {
-            CloneAnimatorController anim = clone.GetComponent<CloneAnimatorController>();
-            if (anim != null)
-                anim.PlayDancing();  // Hoặc gọi SetState(Running) tùy thiết kế
+            if (clone.animator != null)
+                clone.animator.PlayDancing();
         }
         GroupPlayerMovement.StopMovement();
 
@@ -86,9 +85,8 @@ public class LevelManager : Singleton<LevelManager>
     {
     foreach (var clone in prettyCloneSpawner.clones)
     {
-        CloneAnimatorController anim = clone.GetComponent<CloneAnimatorController>();
-        if (anim != null)
-            anim.PlayRunning();  // Hoặc gọi SetState(Running) tùy thiết kế
+        if (clone.animator != null)
+            clone.animator.PlayRunning();
     }
     }
 
